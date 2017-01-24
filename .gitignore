@@ -77,3 +77,4 @@ tmp/
 
 *.pem
 local_scripts/
+.DS_Store
