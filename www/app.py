@@ -8,7 +8,7 @@ import logging; logging.basicConfig(level=logging.INFO)
 import asyncio, os, json, time
 from datetime import datetime
 from aiohttp import web
-from jinja2 import Enviroment, FileSystemLoader
+from jinja2 import Environment, FileSystemLoader
 
 import orm
 from coroweb import add_routes, add_static
@@ -27,7 +27,7 @@ def init_jinja2(app, **kw):
     if path is None:
         path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'templates')
     logging.info('set jinja2 template path: %s' % path)
-    env = Enviroment(loader=FileSystemLoader(path), **options)
+    env = Environment(loader=FileSystemLoader(path), **options)
     filters = kw.get('filters', None)
     if filters is not None:
         for name, f in filters.items():
@@ -63,6 +63,12 @@ async def response_factory(app, handler):
             resp.content_type = 'application/octet-stream'
             return resp
         if isinstance(r, str):
+            if r.startswith('redirect:'):
+                return web.HTTPFound(r[9:])
+            resp = web.Response(body=r.encode('urf-8'))
+            resp.content_type = 'text/html;charset=utf-8'
+            return resp
+        if isinstance(r, dict):
             template = r.get('__template__')
             if template is None:
                 resp = web.Response(body=json.dumps(r, ensure_ascii=False, default=lambda o:o.__dict__).encode('utf-8'))
