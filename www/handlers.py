@@ -2,10 +2,10 @@
 
 ' url handlers '
 
-import time
+import re, time, json, logging, hashlib, base64, asyncio
 
-from coroweb import get
-from models import Blog
+from coroweb import get, post
+from models import Blog, User, Comment, next_id
 
 
 @get('/')
@@ -20,3 +20,10 @@ def index(request):
         '__template__': 'blogs.html',
         'blogs': blogs
     }
+
+@get('/api/users')
+async def api_get_users():
+    users = await User.findall(orderBy='created_at desc')
+    for u in users:
+        u.passwd = '******'
+    return dict(users=users)
