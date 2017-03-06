@@ -79,7 +79,7 @@ def has_request_arg(fn):
             found = True
             continue
         if found and (param.kind != inspect.Parameter.VAR_POSITIONAL and param.kind != inspect.Parameter.KEYWORD_ONLY and param.kind != inspect.Parameter.VAR_KEYWORD):
-            raise VlaueError('request parameter must be the last named parameter in function: %s%s' %
+            raise ValueError('request parameter must be the last named parameter in function: %s%s' %
                              (fn.__name__, str(sig)))
     return found
 
@@ -100,7 +100,7 @@ class RequestHandler(object):
         if self._has_var_kw_arg or self._has_named_kw_args:
             if request.method == 'POST':
                 if not request.content_type:
-                    return web.HTTPBadRequest('Missing Content_Type.')
+                    return web.HTTPBadRequest('Missing Content-Type.')
                 ct = request.content_type.lower()
                 if ct.startswith('application/json'):
                     params = await request.json()
@@ -109,11 +109,11 @@ class RequestHandler(object):
                     kw = params
                 elif ct.startswith('application/x-www-form-urlencoded') or ct.startswith('multipart/form-data'):
                     params = await request.post()
-                    print('before ** : %s' % params)
+#                   print('before ** : %s' % params)
                     kw = dict(**params)
-                    print('after ** : %s' % kw)
+#                   print('after ** : %s' % kw)
                 else:
-                    return web.HTTPBadRequest('Unsupported Content_Type: %s' % request.content_type)
+                    return web.HTTPBadRequest('Unsupported Content-Type: %s' % request.content_type)
             if request.method == 'GET':
                 qs = request.query_string
                 if qs:
@@ -137,7 +137,7 @@ class RequestHandler(object):
             kw['request'] = request
         if self._required_kw_args:
             for name in self._required_kw_args:
-                if name not in kw:
+                if not name in kw:
                     return web.HTTPBadRequest('Missing argument: %s' % name)
         logging.info('call with args: %s' % str(kw))
         try:
@@ -161,7 +161,7 @@ def add_route(app, fn):
     if not asyncio.iscoroutinefunction(fn) and not inspect.isgeneratorfunction(fn):
         fn = asyncio.coroutine(fn)
     logging.info('add route %s %s ==> %s(%s)' % (method, path, fn.__name__,
-                                                 ','.join(inspect.signature(fn).parameters.keys())))
+                                                 ', '.join(inspect.signature(fn).parameters.keys())))
     app.router.add_route(method, path, RequestHandler(app, fn))
 
 
@@ -170,7 +170,7 @@ def add_routes(app, module_name):
     if n == (-1):
         mod = __import__(module_name, globals(), locals())
     else:
-        name = module_name[n + 1:]
+        name = module_name[n+1:]
         mod = getattr(__import__(module_name[:n], globals(), locals(), [name]), name)
     for attr in dir(mod):
         if attr.startswith('_'):
