@@ -69,15 +69,17 @@ async def cookie2user(cookie_str):
         return None
 
 @get('/')
-def index(request):
-    summary = 'Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.'
-    blogs = [
-        Blog(id='1', name='Test Blog', summary=summary, created_at=time.time() - 120),
-        Blog(id='2', name='Something New', summary=summary, created_at=time.time() - 3600),
-        Blog(id='3', name='LIYOUZHI', summary=summary, created_at=time.time() - 7200)
-    ]
+def index(*, page='1'):
+    page_index = get_page_index(page)
+    num = await Blog.findNumber('count(id)')
+    page = Page(num)
+    if num == 0:
+        blogs = []
+    else:
+        blogs = await Blog.findall(orderBy='created_at desc', limit=(page.offset, page.limit))
     return {
         '__template__': 'blogs.html',
+        'page': page,
         'blogs': blogs
     }
 
@@ -139,6 +141,17 @@ def signout(request):
     logging.info('user signed out.')
     return r
 
+@get('/manage/')
+def manage():
+    return 'redirect:/manage/comments'
+
+@get('/manage/comments')
+def manage_comments(*, page='1'):
+    return {
+            '__template__': 'manage_comments.html'
+            'page_index': get_page_index(page)
+            }
+
 @get('/manage/blogs')
 def manage_blogs(*, page='1'):
     return {
@@ -154,9 +167,69 @@ def manage_create_blog():
             'action': '/api/blogs'
             }
 
+@get('/manage/blogs/edit')
+def manage_edit_blog(*, id):
+    return {
+            '__template__': 'manage_blog_edit.html',
+            'id': id,
+            'action': '/api/blogs/%s' % id
+            }
+
+@get('/manage/users')
+def manage_users(*, page='1'):
+    return {
+            '__template__': 'manage_users.html',
+            'page_index': get_page_index(page)
+            }
+
+@get('/api/comments')
+async def api_comments(*, page='1'):
+    page_index = get_page_index(page)
+    num = await Comment.findNumber('count(id)')
+    p = Page(num, page_index)
+    if num == 0:
+        return dict(page=p, comments=())
+    comments = await Comment.findall(orderBy='created_at desc', limit=(p.offset, p.limit))
+    return dict(page=p, comments=comments)
+
+@post('/api/blogs/{id}/comments')
+def api_create_comment(id, request, *, content):
+    user = request.__user__
+    if user is None:
+        raise APIPermissionError('Please signin first.')
+    if not content or content.strip():
+        raise APIValueError('content')
+    blog = await Blog.find(id)
+    if blog is None:
+        raise APIResourceNotFoundError('Blog')
+    comment = Comment(blog_id=blog.id, user_id=user.id, user_name=user.name, user_image=user.image, content=content.strip())
+    await comment.save()
+    return comment
+
+@post('/api/comments/{id}/delete')
+def api_delete_comments(id, request):
+    check_admin(request)
+    c = await Comment.find(id)
+    if c is None:
+        raise APIResourceNotFoundError('Comment')
+    await c.remove()
+    return dict(id=id)
+
+@get('/api/users')
+def api_get_users(*, page='1'):
+    page_index = get_page_index(page)
+    num = await User.findNumber('count(id)')
+    p = Page(num, page_index)
+    if num == 0:
+        return dict(page=p, users=())
+    users = await User.findall(orderBy='created_at desc', limit=(p.offset, p.limit))
+    for u in users:
+        u.password = '******'
+    return dict(page=p, users=users)
+
 _RE_EMAIL = re.compile(r'^[a-z0-9\.\-\_]+\@[a-z0-9\-\_]+(\.[a-z0-9\-\_]+){1,4}$')
 _RE_SHA1 = re.compile(r'^[0-9a-f]{40}$')
-    
+
 @post('/api/users')
 async def api_register_user(*, email, name, password):
     if not name or not name.strip():
@@ -166,7 +239,7 @@ async def api_register_user(*, email, name, password):
     if not password or not _RE_SHA1.match(password):
         raise APIValueError('password')
     users = await User.findall('email=?', [email])
-    if len(users) > 0 :
+    if len(users) > 0:
         raise APIError('register:failed', 'email', 'Email is already in use.')
     uid = next_id()
     sha1_password = '%s:%s' % (uid, password)
